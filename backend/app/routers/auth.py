@@ -1,7 +1,12 @@
+import asyncio
 import hashlib
+import logging
 from datetime import datetime, timezone, timedelta
 
+import httpx
 from authlib.integrations.starlette_client import OAuth
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +74,14 @@ def _issue_tokens(user: User, response: Response) -> AuthResponse:
     )
 
 
+async def _notify_orchestrator(callback_url: str, email: str) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(callback_url, json={"email": email, "secret": settings.ORCHESTRATOR_TOKEN_SECRET})
+    except Exception as exc:
+        logger.warning("Orchestrator callback failed: %s", exc)
+
+
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: UserCreate, response: Response, db: AsyncSession = Depends(get_db)) -> AuthResponse:
     if not validate_password(body.password):
@@ -88,6 +101,10 @@ async def register(body: UserCreate, response: Response, db: AsyncSession = Depe
     auth = _issue_tokens(user, response)
     user.refresh_token_hash = sha256_hex(create_refresh_token(str(user.id)))
     await db.commit()
+
+    if settings.ORCHESTRATOR_CALLBACK_URL:
+        asyncio.ensure_future(_notify_orchestrator(settings.ORCHESTRATOR_CALLBACK_URL, user.email))
+
     return auth
 
 

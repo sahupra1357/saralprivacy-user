@@ -15,8 +15,12 @@ class Settings(BaseSettings):
     BCRYPT_ROUNDS: int = 12
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
+    # Injected by orchestrator — call this URL after registration to record the claiming user
+    ORCHESTRATOR_CALLBACK_URL: str = ""
+
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

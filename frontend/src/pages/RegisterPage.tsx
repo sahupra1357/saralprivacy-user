@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import { register as apiRegister } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,18 +29,28 @@ const RegisterPage: React.FC = () => {
 
   const strength = getStrength(password);
 
+  const meetsBackendRequirements = (pw: string): boolean =>
+    pw.length >= 8 && /[A-Z]/.test(pw) && /[0-9]/.test(pw);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     setError('');
     if (password !== confirm) { setError('Passwords do not match.'); return; }
-    if (strength === 'weak') { setError('Password too weak.'); return; }
+    if (!meetsBackendRequirements(password)) {
+      setError('Password must be at least 8 characters with 1 uppercase letter and 1 number.');
+      return;
+    }
     setLoading(true);
     try {
       const data = await apiRegister({ full_name: fullName, email, password });
       login(data.access_token, data.user);
       void navigate('/dashboard', { replace: true });
-    } catch {
-      setError('Registration failed. Email may already be in use.');
+    } catch (err: unknown) {
+      const detail =
+        isAxiosError(err) && typeof err.response?.data?.detail === 'string'
+          ? err.response.data.detail
+          : 'Registration failed. Please try again.';
+      setError(detail);
     } finally {
       setLoading(false);
     }
